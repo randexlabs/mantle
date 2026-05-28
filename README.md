@@ -1,7 +1,7 @@
 # Mantle 🚀
 
 > [!IMPORTANT]
-> Mantle is no longer maintained. Do not expect responses to tickets, but fixes, or new features.
+> Mantle is no longer maintained. Do not expect responses to tickets, bug fixes, or new features.
 
 An infrastructure-as-code and deployment tool for Roblox.
 
