@@ -1,5 +1,8 @@
 # Mantle 🚀
 
+> [!IMPORTANT]
+> Mantle is no longer maintained. Do not expect responses to tickets, but fixes, or new features.
+
 An infrastructure-as-code and deployment tool for Roblox.
 
 This is a monorepo for the Mantle project. You can find further information about subprojects within the
