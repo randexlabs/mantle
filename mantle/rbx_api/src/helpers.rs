@@ -13,12 +13,11 @@ use crate::{errors::RobloxApiErrorResponse, RobloxApiError, RobloxApiResult};
 
 const MAX_ERROR_BODY_LENGTH: usize = 2048;
 
-pub async fn get_roblox_api_error_from_response(response: reqwest::Response) -> RobloxApiError {
+pub async fn get_roblox_api_error_from_response_with_method(
+    response: reqwest::Response,
+    request_method: &str,
+) -> RobloxApiError {
     let status_code = response.status();
-    // reqwest 0.11 does not expose the originating request from Response, so
-    // callers using `handle` are reported with an unknown method. Newer
-    // request helpers can pass the method directly to `parse_roblox_api_error`.
-    let request_method = "UNKNOWN";
     let request_url = sanitize_url(response.url());
     let headers = response.headers().clone();
     let body = response.text().await.unwrap_or_default();
@@ -95,7 +94,10 @@ fn parse_roblox_api_error(
     }
 }
 
-pub async fn handle_response(response: reqwest::Response) -> RobloxApiResult<reqwest::Response> {
+pub async fn handle_response_with_method(
+    response: reqwest::Response,
+    request_method: &str,
+) -> RobloxApiResult<reqwest::Response> {
     // Check for redirects to the login page
     let url = response.url();
     if matches!(url.domain(), Some("www.roblox.com")) && url.path() == "/NewLogin" {
@@ -105,18 +107,40 @@ pub async fn handle_response(response: reqwest::Response) -> RobloxApiResult<req
     if response.status().is_success() {
         Ok(response)
     } else {
-        Err(get_roblox_api_error_from_response(response).await)
+        Err(get_roblox_api_error_from_response_with_method(response, request_method).await)
+    }
+}
+
+pub async fn handle_with_method(
+    result: Result<reqwest::Response, CsrfTokenRequestError>,
+    request_method: &str,
+) -> RobloxApiResult<reqwest::Response> {
+    match result {
+        Ok(response) => handle_response_with_method(response, request_method).await,
+        Err(CsrfTokenRequestError::RequestError(error)) => Err(error.into()),
+        Err(error) => Err(error.into()),
     }
 }
 
 pub async fn handle(
     result: Result<reqwest::Response, CsrfTokenRequestError>,
 ) -> RobloxApiResult<reqwest::Response> {
-    match result {
-        Ok(response) => handle_response(response).await,
-        Err(CsrfTokenRequestError::RequestError(error)) => Err(error.into()),
-        Err(error) => Err(error.into()),
-    }
+    handle_with_method(result, "UNKNOWN").await
+}
+
+pub async fn handle_response_as_json_with_method<T>(
+    response: reqwest::Response,
+    request_method: &str,
+) -> RobloxApiResult<T>
+where
+    T: de::DeserializeOwned,
+{
+    let full = handle_response_with_method(response, request_method)
+        .await?
+        .text()
+        .await?;
+    trace!("Handle JSON: {}", full);
+    serde_json::from_str::<T>(&full).map_err(|e| e.into())
 }
 
 pub async fn handle_as_json<T>(
@@ -147,6 +171,20 @@ pub async fn get_file_part(file_path: &Path) -> RobloxApiResult<Part> {
         .file_name(file_name)
         .mime_str(mime.as_ref())
         .unwrap())
+}
+
+pub async fn get_file_data(file_path: &Path) -> RobloxApiResult<(Vec<u8>, String, String)> {
+    let data = tokio::fs::read(file_path).await?;
+    let file_name = file_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| RobloxApiError::NoFileName(file_path.display().to_string()))?
+        .to_owned();
+    let mime = mime_guess::from_path(file_path)
+        .first_or_octet_stream()
+        .to_string();
+
+    Ok((data, file_name, mime))
 }
 
 #[cfg(test)]
@@ -181,7 +219,7 @@ mod tests {
         let error = parse_roblox_api_error(
             StatusCode::NOT_FOUND,
             "GET",
-            "https://apis.roblox.com/example?token=secret",
+            "https://apis.roblox.com/example",
             &HeaderMap::new(),
             "",
         );

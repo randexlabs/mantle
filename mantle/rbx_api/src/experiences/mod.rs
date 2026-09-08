@@ -4,7 +4,7 @@ use reqwest::header;
 use serde_json::json;
 
 use crate::{
-    errors::RobloxApiResult,
+    errors::{RobloxApiError, RobloxApiResult},
     helpers::{handle, handle_as_json},
     models::AssetId,
     RobloxApi,
@@ -99,20 +99,24 @@ impl RobloxApi {
         active: bool,
     ) -> RobloxApiResult<()> {
         let endpoint = if active { "activate" } else { "deactivate" };
-        let res = self
-            .csrf_token_store
-            .send_request(|| async {
-                Ok(self
-                    .client
+        let client =
+            self.open_cloud_client()
+                .ok_or_else(|| RobloxApiError::OpenCloudApiKeyRequired {
+                    operation: format!("universe {} {}", experience_id, endpoint),
+                    scope: "legacy-universe:manage".to_owned(),
+                })?;
+        let response = self
+            .send_open_cloud_request(
+                "POST",
+                client
                     .post(format!(
-                        "https://develop.roblox.com/v1/universes/{}/{}",
+                        "https://apis.roblox.com/legacy-develop/v1/universes/{}/{}",
                         experience_id, endpoint
                     ))
-                    .header(header::CONTENT_LENGTH, 0))
-            })
-            .await;
-
-        handle(res).await?;
+                    .header(header::CONTENT_LENGTH, 0),
+            )
+            .await?;
+        drop(response);
 
         Ok(())
     }

@@ -17,6 +17,11 @@ pub enum RobloxApiError {
     #[error("Authorization has been denied for this request. Check your ROBLOSECURITY cookie.")]
     Authorization,
 
+    #[error(
+        "Open Cloud API key is required for {operation}; configure MANTLE_OPEN_CLOUD_API_KEY with the {scope} scope."
+    )]
+    OpenCloudApiKeyRequired { operation: String, scope: String },
+
     #[error("Roblox API request failed: {request_method} {request_url} ({status_code}): {reason}")]
     Roblox {
         status_code: StatusCode,
@@ -96,10 +101,10 @@ pub struct RobloxApiErrorResponse {
     pub success: Option<bool>,
 
     // Open Cloud APIs use an errorCode/errorMessage pair.
-    #[serde(alias = "ErrorCode")]
+    #[serde(rename = "errorCode", alias = "ErrorCode")]
     pub error_code: Option<String>,
 
-    #[serde(alias = "ErrorMessage")]
+    #[serde(rename = "errorMessage", alias = "ErrorMessage")]
     pub error_message: Option<String>,
 
     pub field: Option<String>,

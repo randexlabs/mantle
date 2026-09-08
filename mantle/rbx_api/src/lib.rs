@@ -22,6 +22,8 @@ use errors::{RobloxApiError, RobloxApiResult};
 use rbx_auth::{RobloxCookieStore, RobloxCsrfTokenStore};
 use reqwest::header::{HeaderMap, HeaderValue};
 
+use crate::helpers::{handle_response_with_method, handle_with_method};
+
 pub struct RobloxApi {
     client: reqwest::Client,
     open_cloud_client: Option<reqwest::Client>,
@@ -59,5 +61,38 @@ impl RobloxApi {
     pub async fn validate_auth(&self) -> RobloxApiResult<()> {
         self.get_authenticated_user().await?;
         Ok(())
+    }
+
+    pub(crate) async fn send_authenticated_request<F>(
+        &self,
+        request_method: &str,
+        request_factory: F,
+    ) -> RobloxApiResult<reqwest::Response>
+    where
+        F: Fn(&reqwest::Client) -> anyhow::Result<reqwest::RequestBuilder>,
+    {
+        if let Some(client) = self.open_cloud_client.as_ref() {
+            let response = request_factory(client)?.send().await?;
+            handle_response_with_method(response, request_method).await
+        } else {
+            let response = self
+                .csrf_token_store
+                .send_request(|| async { request_factory(&self.client) })
+                .await;
+            handle_with_method(response, request_method).await
+        }
+    }
+
+    pub(crate) async fn send_open_cloud_request(
+        &self,
+        request_method: &str,
+        request: reqwest::RequestBuilder,
+    ) -> RobloxApiResult<reqwest::Response> {
+        let response = request.send().await?;
+        handle_response_with_method(response, request_method).await
+    }
+
+    pub(crate) fn open_cloud_client(&self) -> Option<&reqwest::Client> {
+        self.open_cloud_client.as_ref()
     }
 }

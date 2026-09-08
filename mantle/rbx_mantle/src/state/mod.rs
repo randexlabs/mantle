@@ -399,7 +399,7 @@ fn get_desired_experience_graph(
                         file_path: icon_path.clone(),
                         file_hash: get_file_hash(project_path.join(icon_path))?,
                     }),
-                    &[&product_resource],
+                    &[&experience, &product_resource],
                 ));
             }
 
@@ -712,12 +712,15 @@ pub async fn import_graph(
             &format!("product_{}", product.product_id),
             RobloxInputs::Product(ProductInputs {
                 name: product.name,
-                description: product.description.unwrap_or_default(),
-                price: product.price_in_robux,
+                description: product.description,
+                price: product
+                    .price_information
+                    .and_then(|price| price.default_price_in_robux)
+                    .unwrap_or_default(),
             }),
             RobloxOutputs::Product(ProductOutputs {
                 asset_id: product.product_id,
-                product_id: product.developer_product_id,
+                product_id: product.product_id,
             }),
             &[&experience],
         );
@@ -729,7 +732,7 @@ pub async fn import_graph(
                     file_hash: "fake-hash".to_owned(),
                 }),
                 RobloxOutputs::ProductIcon(AssetOutputs { asset_id: icon_id }),
-                &[&product_resource],
+                &[&experience, &product_resource],
             ));
         }
         resources.push(product_resource);
@@ -743,7 +746,9 @@ pub async fn import_graph(
             RobloxInputs::Pass(PassInputs {
                 name: pass.name,
                 description: pass.description,
-                price: pass.price_in_robux,
+                price: pass
+                    .price_information
+                    .and_then(|price| price.default_price_in_robux),
                 icon_file_path: "fake-path".to_owned(),
                 icon_file_hash: "fake-hash".to_owned(),
             }),
