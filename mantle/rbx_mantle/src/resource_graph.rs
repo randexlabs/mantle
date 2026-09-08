@@ -33,13 +33,6 @@ macro_rules! single_output {
 }
 pub(crate) use single_output;
 
-macro_rules! optional_output {
-    ($expr:expr, $enum:path) => {{
-        all_outputs!($expr, $enum).first().map(|output| *output)
-    }};
-}
-pub(crate) use optional_output;
-
 pub type ResourceId = String;
 
 pub trait Resource<TInputs, TOutputs>: Clone {
