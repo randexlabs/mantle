@@ -149,7 +149,17 @@ pub async fn handle_as_json<T>(
 where
     T: de::DeserializeOwned,
 {
-    let res = handle(result).await?;
+    handle_as_json_with_method(result, "UNKNOWN").await
+}
+
+pub async fn handle_as_json_with_method<T>(
+    result: Result<reqwest::Response, CsrfTokenRequestError>,
+    request_method: &str,
+) -> RobloxApiResult<T>
+where
+    T: de::DeserializeOwned,
+{
+    let res = handle_with_method(result, request_method).await?;
     let full = res.text().await?;
     trace!("Handle JSON: {}", full);
     serde_json::from_str::<T>(&full).map_err(|e| e.into())

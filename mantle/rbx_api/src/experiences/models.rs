@@ -18,6 +18,19 @@ pub struct GetExperienceResponse {
     pub creator_target_id: AssetId,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExperienceActivationEligibility {
+    pub is_eligible: bool,
+    pub maturity_rated: bool,
+}
+
+impl ExperienceActivationEligibility {
+    pub fn requires_maturity_rating(&self) -> bool {
+        !self.is_eligible && !self.maturity_rated
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExperienceConfigurationModel {
@@ -196,6 +209,31 @@ impl ExperienceAvatarAssetOverride {
             is_player_choice: true,
             asset_id: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExperienceActivationEligibility;
+
+    #[test]
+    fn identifies_missing_maturity_rating() {
+        let eligibility = ExperienceActivationEligibility {
+            is_eligible: false,
+            maturity_rated: false,
+        };
+
+        assert!(eligibility.requires_maturity_rating());
+    }
+
+    #[test]
+    fn does_not_misidentify_other_activation_restrictions() {
+        let eligibility = ExperienceActivationEligibility {
+            is_eligible: false,
+            maturity_rated: true,
+        };
+
+        assert!(!eligibility.requires_maturity_rating());
     }
 }
 

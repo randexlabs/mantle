@@ -3,7 +3,7 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::models::AssetTypeId;
+use crate::models::{AssetId, AssetTypeId};
 
 // TODO: Improve some of these error messages.
 #[derive(Error, Debug)]
@@ -21,6 +21,11 @@ pub enum RobloxApiError {
         "Open Cloud API key is required for {operation}; configure ROBLOX_OPEN_CLOUD_API_KEY (or the legacy MANTLE_OPEN_CLOUD_API_KEY alias) with the {scope} scope."
     )]
     OpenCloudApiKeyRequired { operation: String, scope: String },
+
+    #[error(
+        "Cannot activate experience {experience_id} publicly: complete the Roblox Maturity & Compliance Questionnaire in Creator Dashboard, then retry."
+    )]
+    ExperienceMaturityRatingRequired { experience_id: AssetId },
 
     #[error("Roblox API request failed: {request_method} {request_url} ({status_code}): {reason}")]
     Roblox {

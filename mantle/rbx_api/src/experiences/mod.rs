@@ -4,13 +4,16 @@ use reqwest::header;
 use serde_json::json;
 
 use crate::{
-    errors::RobloxApiResult,
-    helpers::{handle, handle_as_json},
+    errors::{RobloxApiError, RobloxApiResult},
+    helpers::{handle, handle_as_json, handle_as_json_with_method, handle_with_method},
     models::AssetId,
     RobloxApi,
 };
 
-use self::models::{CreateExperienceResponse, ExperienceConfigurationModel, GetExperienceResponse};
+use self::models::{
+    CreateExperienceResponse, ExperienceActivationEligibility, ExperienceConfigurationModel,
+    GetExperienceResponse,
+};
 
 impl RobloxApi {
     pub async fn create_experience(
@@ -98,6 +101,25 @@ impl RobloxApi {
         experience_id: AssetId,
         active: bool,
     ) -> RobloxApiResult<()> {
+        if active {
+            match self
+                .get_experience_activation_eligibility(experience_id)
+                .await
+            {
+                Ok(eligibility) if eligibility.requires_maturity_rating() => {
+                    return Err(RobloxApiError::ExperienceMaturityRatingRequired { experience_id });
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    log::debug!(
+                        "Unable to check activation eligibility for experience {} before activation: {}",
+                        experience_id,
+                        error
+                    );
+                }
+            }
+        }
+
         let endpoint = if active { "activate" } else { "deactivate" };
         let response = self
             .csrf_token_store
@@ -111,8 +133,25 @@ impl RobloxApi {
                     .header(header::CONTENT_LENGTH, 0))
             })
             .await;
-        handle(response).await?;
+        handle_with_method(response, "POST").await?;
 
         Ok(())
+    }
+
+    async fn get_experience_activation_eligibility(
+        &self,
+        experience_id: AssetId,
+    ) -> RobloxApiResult<ExperienceActivationEligibility> {
+        let response = self
+            .csrf_token_store
+            .send_request(|| async {
+                Ok(self.client.get(format!(
+                    "https://develop.roblox.com/v1/universes/{}/activation-eligibility",
+                    experience_id
+                )))
+            })
+            .await;
+
+        handle_as_json_with_method(response, "GET").await
     }
 }
