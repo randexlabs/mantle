@@ -22,7 +22,7 @@ pub async fn get_roblox_api_error_from_response_with_method(
     let headers = response.headers().clone();
     let body = response.text().await.unwrap_or_default();
 
-    parse_roblox_api_error(status_code, &request_method, &request_url, &headers, &body)
+    parse_roblox_api_error(status_code, request_method, &request_url, &headers, &body)
 }
 
 fn sanitize_url(url: &Url) -> String {
@@ -39,7 +39,7 @@ fn truncate_body(body: &str) -> Option<String> {
 
     let mut truncated = body.chars().take(MAX_ERROR_BODY_LENGTH).collect::<String>();
     if body.chars().count() > MAX_ERROR_BODY_LENGTH {
-        truncated.push_str("…");
+        truncated.push('…');
     }
     Some(truncated)
 }
