@@ -2,7 +2,7 @@
 
 - Migrated developer product management to the current Roblox Open Cloud API because the previous endpoints returned `404 Not Found`.
 - Migrated game pass management to the current Roblox Open Cloud API because the previous endpoints were deprecated.
-- Migrated universe activation and deactivation to the current Roblox Open Cloud API.
+- Switched universe activation and deactivation to Roblox's creator-cookie endpoints so a newly created universe can be enabled during its first deployment without requiring Open Cloud universe authorization.
 - Migrated supported badge and experience media operations to their current Roblox API endpoints.
 - Added explicit Open Cloud scope diagnostics so authorization failures identify the missing permission.
 - Improved Roblox API errors with the affected resource, HTTP method, URL, status code, and response details.
@@ -20,4 +20,4 @@
 - Removed the `imageAsset`, `audioAsset`, and `assetAlias` resource kinds and the `target.experience.assets` manifest field.
 - Removed the generic gameplay-asset upload workflow from the CLI; `mantle upload` remains available exclusively for uploading remote Mantle state files.
 - Removed legacy generic gameplay asset resources from loaded Mantle state without archiving or deleting them.
-- Updated the Mantle version to `0.12.0`.
+- Updated the Mantle version to `0.12.1`.
