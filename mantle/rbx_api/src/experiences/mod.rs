@@ -1,10 +1,10 @@
 pub mod models;
 
-use reqwest::{header, StatusCode};
+use reqwest::header;
 use serde_json::json;
 
 use crate::{
-    errors::{RobloxApiError, RobloxApiResult},
+    errors::RobloxApiResult,
     helpers::{handle, handle_as_json},
     models::AssetId,
     RobloxApi,
@@ -99,53 +99,19 @@ impl RobloxApi {
         active: bool,
     ) -> RobloxApiResult<()> {
         let endpoint = if active { "activate" } else { "deactivate" };
-        let client =
-            self.open_cloud_client()
-                .ok_or_else(|| RobloxApiError::OpenCloudApiKeyRequired {
-                    operation: format!("universe {} {}", experience_id, endpoint),
-                    scope: "legacy-universe:manage".to_owned(),
-                })?;
         let response = self
-            .send_open_cloud_request(
-                "POST",
-                client
+            .csrf_token_store
+            .send_request(|| async {
+                Ok(self
+                    .client
                     .post(format!(
-                        "https://apis.roblox.com/legacy-develop/v1/universes/{}/{}",
+                        "https://develop.roblox.com/v1/universes/{}/{}",
                         experience_id, endpoint
                     ))
-                    .header(header::CONTENT_LENGTH, 0),
-            )
-            .await
-            .map_err(|error| match error {
-                RobloxApiError::Roblox {
-                    status_code,
-                    request_method,
-                    request_url,
-                    reason,
-                } if status_code == StatusCode::UNAUTHORIZED => RobloxApiError::Roblox {
-                    status_code,
-                    request_method,
-                    request_url,
-                    reason: format!(
-                        "{reason}; verify the Open Cloud API key is active and was copied without quotes or a session-cookie value"
-                    ),
-                },
-                RobloxApiError::Roblox {
-                    status_code,
-                    request_method,
-                    request_url,
-                    reason,
-                } if status_code == StatusCode::FORBIDDEN => RobloxApiError::Roblox {
-                    status_code,
-                    request_method,
-                    request_url,
-                    reason: format!(
-                        "{reason}; verify the key has the legacy-universe:manage scope and access to this universe"
-                    ),
-                },
-                error => error,
-            })?;
-        drop(response);
+                    .header(header::CONTENT_LENGTH, 0))
+            })
+            .await;
+        handle(response).await?;
 
         Ok(())
     }
