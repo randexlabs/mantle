@@ -1,15 +1,11 @@
-# Mantle 🚀
+# Changes
 
-> [!IMPORTANT]
-> Mantle is no longer maintained. Do not expect responses to tickets, bug fixes, or new features.
-
-An infrastructure-as-code and deployment tool for Roblox.
-
-This is a monorepo for the Mantle project. You can find further information about subprojects within the
-directories:
-
-- [mantle](mantle/README.md): the Mantle project itself.
-- [docs](docs/README.md): the docs site for the Mantle project.
-- [examples](examples/README.md): example Mantle projects.
-
-For more information about the project, visit the [docs site](https://mantledeploy.vercel.app).
+- Migrated developer product management to the current Roblox Open Cloud API because the previous endpoints returned `404 Not Found`.
+- Migrated game pass management to the current Roblox Open Cloud API because the previous endpoints were deprecated.
+- Migrated universe activation and deactivation to the current Roblox Open Cloud API.
+- Migrated supported badge and experience media operations to their current Roblox API endpoints.
+- Added explicit Open Cloud scope diagnostics so authorization failures identify the missing permission.
+- Improved Roblox API errors with the affected resource, HTTP method, URL, status code, and response details.
+- Improved resource graph errors so missing dependencies are reported correctly instead of being misidentified as cycles.
+- Preserved dependency state after partial failures so failed deployments and teardowns can be retried safely.
+- Updated the Mantle version to `0.11.19`.
