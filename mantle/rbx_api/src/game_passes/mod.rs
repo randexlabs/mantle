@@ -31,7 +31,8 @@ impl RobloxApi {
                 }
                 Ok(request)
             })
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("game-pass:read"))?;
 
         handle_response_as_json_with_method(response, "GET").await
     }
@@ -47,7 +48,8 @@ impl RobloxApi {
         );
         let response = self
             .send_authenticated_request("GET", move |client| Ok(client.get(url.clone())))
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("game-pass:read"))?;
 
         handle_response_as_json_with_method(response, "GET").await
     }
@@ -103,7 +105,8 @@ impl RobloxApi {
                 }
                 Ok(client.post(url.clone()).multipart(form))
             })
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("game-pass:write"))?;
 
         handle_response_as_json_with_method(response, "POST").await
     }
@@ -142,9 +145,12 @@ impl RobloxApi {
                 }
                 Ok(client.patch(url.clone()).multipart(form))
             })
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("game-pass:write"))?;
         drop(response);
 
-        self.get_game_pass(experience_id, game_pass_id).await
+        self.get_game_pass(experience_id, game_pass_id)
+            .await
+            .map_err(|error| error.with_required_scope("game-pass:read"))
     }
 }

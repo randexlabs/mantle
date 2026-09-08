@@ -35,7 +35,8 @@ impl RobloxApi {
                         .text("price", price.to_string()),
                 ))
             })
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("developer-product:write"))?;
 
         handle_response_as_json_with_method(response, "POST").await
     }
@@ -57,7 +58,8 @@ impl RobloxApi {
                 }
                 Ok(request)
             })
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("developer-product:read"))?;
 
         handle_response_as_json_with_method(response, "GET").await
     }
@@ -106,7 +108,8 @@ impl RobloxApi {
                         .text("price", price.to_string()),
                 ))
             })
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("developer-product:write"))?;
         drop(response);
 
         Ok(())
@@ -132,7 +135,8 @@ impl RobloxApi {
                     .patch(url.clone())
                     .multipart(Form::new().part("imageFile", image)))
             })
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("developer-product:write"))?;
         drop(response);
 
         self.get_developer_product(experience_id, product_id).await
@@ -149,7 +153,8 @@ impl RobloxApi {
         );
         let response = self
             .send_authenticated_request("GET", move |client| Ok(client.get(url.clone())))
-            .await?;
+            .await
+            .map_err(|error| error.with_required_scope("developer-product:read"))?;
 
         handle_response_as_json_with_method(response, "GET").await
     }

@@ -79,6 +79,25 @@ impl From<RobloxApiError> for String {
 
 pub type RobloxApiResult<T> = Result<T, RobloxApiError>;
 
+impl RobloxApiError {
+    pub fn with_required_scope(self, scope: &str) -> Self {
+        match self {
+            Self::Roblox {
+                status_code: StatusCode::FORBIDDEN,
+                request_method,
+                request_url,
+                reason,
+            } => Self::Roblox {
+                status_code: StatusCode::FORBIDDEN,
+                request_method,
+                request_url,
+                reason: format!("{reason}; required Open Cloud scope: {scope}"),
+            },
+            error => error,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct RobloxApiErrorResponse {
     // There are some other possible properties but we currently have no use for them so they are not
