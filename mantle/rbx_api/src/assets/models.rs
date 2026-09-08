@@ -27,7 +27,7 @@ pub enum Creator {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationResult<TResponse> {
-    pub path: String,
+    pub path: Option<String>,
     pub done: bool,
     pub response: Option<TResponse>,
     pub error: Option<OperationError>,
