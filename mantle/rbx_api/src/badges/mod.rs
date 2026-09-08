@@ -6,8 +6,8 @@ use reqwest::multipart::Form;
 use serde_json::json;
 
 use crate::{
-    errors::RobloxApiResult,
-    helpers::{get_file_part, handle, handle_as_json},
+    errors::{RobloxApiError, RobloxApiResult},
+    helpers::{get_file_part, handle_as_json, handle_response_as_json_with_method},
     models::{AssetId, CreatorType, UploadImageResponse},
     RobloxApi,
 };
@@ -24,27 +24,41 @@ impl RobloxApi {
         payment_source: CreatorType,
         expected_cost: u32,
     ) -> RobloxApiResult<CreateBadgeResponse> {
-        let res = self
-            .csrf_token_store
-            .send_request(|| async {
-                Ok(self
-                    .client
-                    .post(&format!(
-                        "https://badges.roblox.com/v1/universes/{}/badges",
+        let icon_file = get_file_part(&icon_file_path).await?;
+        let client =
+            self.open_cloud_client()
+                .ok_or_else(|| RobloxApiError::OpenCloudApiKeyRequired {
+                    operation: format!("badge creation for universe {}", experience_id),
+                    scope: "legacy-universe.badge:manage-and-spend-robux".to_owned(),
+                })?;
+        let payment_source_type = match payment_source {
+            CreatorType::User => 1,
+            CreatorType::Group => 2,
+        };
+        let response = self
+            .send_open_cloud_request(
+                "POST",
+                client
+                    .post(format!(
+                        "https://apis.roblox.com/legacy-badges/v1/universes/{}/badges",
                         experience_id
                     ))
                     .multipart(
                         Form::new()
-                            .part("request.files", get_file_part(&icon_file_path).await?)
-                            .text("request.name", name.clone())
-                            .text("request.description", description.clone())
-                            .text("request.paymentSourceType", payment_source.to_string())
-                            .text("request.expectedCost", expected_cost.to_string()),
-                    ))
-            })
-            .await;
+                            .part("files", icon_file)
+                            .text("name", name)
+                            .text("description", description)
+                            .text("paymentSourceType", payment_source_type.to_string())
+                            .text("expectedCost", expected_cost.to_string())
+                            .text("isActive", "true"),
+                    ),
+            )
+            .await
+            .map_err(|error| {
+                error.with_required_scope("legacy-universe.badge:manage-and-spend-robux")
+            })?;
 
-        handle_as_json(res).await
+        handle_response_as_json_with_method(response, "POST").await
     }
 
     pub async fn update_badge(
@@ -54,21 +68,29 @@ impl RobloxApi {
         description: String,
         enabled: bool,
     ) -> RobloxApiResult<()> {
-        let res = self
-            .csrf_token_store
-            .send_request(|| async {
-                Ok(self
-                    .client
-                    .patch(format!("https://badges.roblox.com/v1/badges/{}", badge_id))
+        let client =
+            self.open_cloud_client()
+                .ok_or_else(|| RobloxApiError::OpenCloudApiKeyRequired {
+                    operation: format!("badge {} update", badge_id),
+                    scope: "legacy-universe.badge:write".to_owned(),
+                })?;
+        let response = self
+            .send_open_cloud_request(
+                "PATCH",
+                client
+                    .patch(format!(
+                        "https://apis.roblox.com/legacy-badges/v1/badges/{}",
+                        badge_id
+                    ))
                     .json(&json!({
                         "name": name,
                         "description": description,
                         "enabled": enabled,
-                    })))
-            })
-            .await;
-
-        handle(res).await?;
+                    })),
+            )
+            .await
+            .map_err(|error| error.with_required_scope("legacy-universe.badge:write"))?;
+        drop(response);
 
         Ok(())
     }
@@ -138,19 +160,26 @@ impl RobloxApi {
         badge_id: AssetId,
         icon_file: PathBuf,
     ) -> RobloxApiResult<UploadImageResponse> {
-        let res = self
-            .csrf_token_store
-            .send_request(|| async {
-                Ok(self
-                    .client
-                    .post(&format!(
-                        "https://publish.roblox.com/v1/badges/{}/icon",
+        let icon_file = get_file_part(&icon_file).await?;
+        let client =
+            self.open_cloud_client()
+                .ok_or_else(|| RobloxApiError::OpenCloudApiKeyRequired {
+                    operation: format!("badge {} icon update", badge_id),
+                    scope: "legacy-badge:manage".to_owned(),
+                })?;
+        let response = self
+            .send_open_cloud_request(
+                "POST",
+                client
+                    .post(format!(
+                        "https://apis.roblox.com/legacy-publish/v1/badges/{}/icon",
                         badge_id
                     ))
-                    .multipart(Form::new().part("request.files", get_file_part(&icon_file).await?)))
-            })
-            .await;
+                    .multipart(Form::new().part("Files", icon_file)),
+            )
+            .await
+            .map_err(|error| error.with_required_scope("legacy-badge:manage"))?;
 
-        handle_as_json(res).await
+        handle_response_as_json_with_method(response, "POST").await
     }
 }

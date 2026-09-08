@@ -90,7 +90,7 @@ impl RobloxApi {
             .csrf_token_store
             .send_request(|| async {
                 Ok(self.client.get(format!(
-                    "https://games.roblox.com/v1/games/{}/media",
+                    "https://games.roblox.com/v2/games/{}/media",
                     experience_id
                 )))
             })
