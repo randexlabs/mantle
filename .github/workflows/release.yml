@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mantle-win64
-          path: mantle-win64.zip
+          path: mantle/target/release/mantle-win64.zip
   macos:
     runs-on: macos-latest
     steps:
@@ -75,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mantle-macos
-          path: mantle-macos.zip
+          path: mantle/target/release/mantle-macos.zip
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mantle-linux
-          path: mantle-linux.zip
+          path: mantle/target/release/mantle-linux.zip
       - name: Generate schema
         working-directory: mantle
         run: cargo run --release --bin gen_schema > schema.json
