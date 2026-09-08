@@ -156,6 +156,22 @@ where
     fn get_topological_order(&self) -> Result<Vec<ResourceId>, String> {
         let mut dependency_graph = self.get_dependency_graph();
 
+        if let Some((resource_id, dependency_id)) =
+            dependency_graph
+                .iter()
+                .find_map(|(resource_id, dependencies)| {
+                    dependencies
+                        .iter()
+                        .find(|dependency_id| !dependency_graph.contains_key(*dependency_id))
+                        .map(|dependency_id| (resource_id, dependency_id))
+                })
+        {
+            return Err(format!(
+                "Resource '{}' depends on missing resource '{}'.",
+                resource_id, dependency_id
+            ));
+        }
+
         let mut start_nodes: Vec<ResourceId> = dependency_graph
             .iter()
             .filter_map(|(node, deps)| {
@@ -188,11 +204,40 @@ where
     }
 
     pub fn get_resource_list(&self) -> Vec<TResource> {
-        self.get_topological_order()
-            .unwrap()
+        let resource_order = match self.get_topological_order() {
+            Ok(resource_order) => resource_order,
+            Err(error) => {
+                logger::log(Paint::yellow(format!(
+                    "Unable to order resources for state output: {} Preserving ID order.",
+                    error
+                )));
+                self.resources.keys().cloned().collect()
+            }
+        };
+
+        resource_order
             .iter()
             .map(|id| self.resources.get(id).unwrap().clone())
             .collect()
+    }
+
+    fn restore_previous_resource_and_dependencies(
+        &mut self,
+        previous_graph: &ResourceGraph<TResource, TInputs, TOutputs>,
+        resource_id: &str,
+    ) {
+        let Some(previous_resource) = previous_graph.resources.get(resource_id) else {
+            return;
+        };
+
+        let dependencies = previous_resource.get_dependencies();
+        self.resources
+            .entry(resource_id.to_owned())
+            .or_insert_with(|| previous_resource.to_owned());
+
+        for dependency_id in dependencies {
+            self.restore_previous_resource_and_dependencies(previous_graph, &dependency_id);
+        }
     }
 
     fn get_dependency_outputs(&self, resource: &TResource) -> Option<Vec<TOutputs>> {
@@ -285,12 +330,10 @@ where
                 results.noop_count += 1;
             }
             OperationResult::Skipped(reason) => {
-                // The resource was not evaluated. If the resource existed previously, we will copy
-                // the old version into this graph. Otherwise, we will remove this resource from the
-                // graph.
-                if let Some(previous_resource) = previous_graph.resources.get(resource_id) {
-                    self.resources
-                        .insert(resource_id.to_owned(), previous_resource.to_owned());
+                // The resource was not evaluated. If it existed previously, restore it and its
+                // dependency chain so the persisted graph remains complete for a retry.
+                if previous_graph.resources.contains_key(resource_id) {
+                    self.restore_previous_resource_and_dependencies(previous_graph, resource_id);
                 } else {
                     self.resources.remove(resource_id);
                 }
@@ -299,12 +342,10 @@ where
                 logger::end_action(format!("Skipped: {}", Paint::yellow(reason)));
             }
             OperationResult::Failed(error) => {
-                // An error occurred while creating or updating the resource. If the
-                // resource existed previously, we will copy the old version into this
-                // graph. Otherwise, we will remove this resource from the graph.
-                if let Some(previous_resource) = previous_graph.resources.get(resource_id) {
-                    self.resources
-                        .insert(resource_id.to_owned(), previous_resource.to_owned());
+                // An error occurred while operating on the resource. If it existed previously,
+                // restore it and its dependency chain so the persisted graph remains complete.
+                if previous_graph.resources.contains_key(resource_id) {
+                    self.restore_previous_resource_and_dependencies(previous_graph, resource_id);
                 } else {
                     self.resources.remove(resource_id);
                 }
