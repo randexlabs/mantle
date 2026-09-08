@@ -18,7 +18,7 @@ pub enum RobloxApiError {
     Authorization,
 
     #[error(
-        "Open Cloud API key is required for {operation}; configure MANTLE_OPEN_CLOUD_API_KEY with the {scope} scope."
+        "Open Cloud API key is required for {operation}; configure ROBLOX_OPEN_CLOUD_API_KEY (or the legacy MANTLE_OPEN_CLOUD_API_KEY alias) with the {scope} scope."
     )]
     OpenCloudApiKeyRequired { operation: String, scope: String },
 

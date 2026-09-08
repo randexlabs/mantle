@@ -333,14 +333,18 @@ pub struct RobloxResourceManager {
 
 impl RobloxResourceManager {
     pub async fn new(project_path: &Path, payment_source: CreatorType) -> Result<Self, String> {
-        let open_cloud_api_key = match env::var("MANTLE_OPEN_CLOUD_API_KEY") {
-            Ok(v) => {
-                info!("Loaded cookie from ROBLOSECURITY environment variable.");
-                Some(v)
-            }
-            Err(_) => None,
-        };
-
+        let open_cloud_api_key = [
+            "ROBLOX_OPEN_CLOUD_API_KEY",
+            "MANTLE_OPEN_CLOUD_API_KEY",
+            "ROBLOX_API_KEY",
+        ]
+        .into_iter()
+        .find_map(|variable| {
+            env::var(variable).ok().map(|value| {
+                info!("Loaded Open Cloud API key from {}.", variable);
+                value
+            })
+        });
         let cookie_store = Arc::new(RobloxCookieStore::new()?);
         let csrf_token_store = RobloxCsrfTokenStore::new();
         let roblox_api =
@@ -530,7 +534,12 @@ impl ResourceManager<RobloxInputs, RobloxOutputs> for RobloxResourceManager {
                             PublishVersionType::Published,
                         )
                         .await
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| {
+                            format!(
+                                "Failed to publish place file for universe {} and place {} using Roblox Open Cloud place publishing: {}",
+                                experience.asset_id, place.asset_id, e
+                            )
+                        })?;
 
                     Ok(RobloxOutputs::PlaceFile(PlaceFileOutputs {
                         version: response.version_number,

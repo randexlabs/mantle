@@ -310,7 +310,11 @@ where
                 }
 
                 *failures_count += 1;
-                logger::end_action(format!("Failed: {}", Paint::red(error)));
+                logger::end_action(format!(
+                    "Failed [{}]: {}",
+                    Paint::yellow(resource_id),
+                    Paint::red(error)
+                ));
             }
         }
     }
