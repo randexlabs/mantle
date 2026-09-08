@@ -22,7 +22,7 @@ use errors::{RobloxApiError, RobloxApiResult};
 use rbx_auth::{RobloxCookieStore, RobloxCsrfTokenStore};
 use reqwest::header::{HeaderMap, HeaderValue};
 
-use crate::helpers::{handle_response_with_method, handle_with_method};
+use crate::helpers::handle_response_with_method;
 
 pub struct RobloxApi {
     client: reqwest::Client,
@@ -63,24 +63,17 @@ impl RobloxApi {
         Ok(())
     }
 
-    pub(crate) async fn send_authenticated_request<F>(
+    pub(crate) fn open_cloud_client_required(
         &self,
-        request_method: &str,
-        request_factory: F,
-    ) -> RobloxApiResult<reqwest::Response>
-    where
-        F: Fn(&reqwest::Client) -> anyhow::Result<reqwest::RequestBuilder>,
-    {
-        if let Some(client) = self.open_cloud_client.as_ref() {
-            let response = request_factory(client)?.send().await?;
-            handle_response_with_method(response, request_method).await
-        } else {
-            let response = self
-                .csrf_token_store
-                .send_request(|| async { request_factory(&self.client) })
-                .await;
-            handle_with_method(response, request_method).await
-        }
+        operation: String,
+        scope: &str,
+    ) -> RobloxApiResult<&reqwest::Client> {
+        self.open_cloud_client
+            .as_ref()
+            .ok_or_else(|| RobloxApiError::OpenCloudApiKeyRequired {
+                operation,
+                scope: scope.to_owned(),
+            })
     }
 
     pub(crate) async fn send_open_cloud_request(

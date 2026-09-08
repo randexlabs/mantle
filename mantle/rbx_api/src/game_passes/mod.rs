@@ -23,14 +23,16 @@ impl RobloxApi {
             "https://apis.roblox.com/game-passes/v1/universes/{}/game-passes/creator",
             experience_id
         );
+        let client = self.open_cloud_client_required(
+            format!("game pass listing for universe {}", experience_id),
+            "game-pass:read",
+        )?;
+        let mut request = client.get(url).query(&[("pageSize", "100")]);
+        if let Some(page_token) = &page_token {
+            request = request.query(&[("pageToken", page_token)]);
+        }
         let response = self
-            .send_authenticated_request("GET", move |client| {
-                let mut request = client.get(url.clone()).query(&[("pageSize", "100")]);
-                if let Some(page_token) = &page_token {
-                    request = request.query(&[("pageToken", page_token)]);
-                }
-                Ok(request)
-            })
+            .send_open_cloud_request("GET", request)
             .await
             .map_err(|error| error.with_required_scope("game-pass:read"))?;
 
@@ -46,8 +48,12 @@ impl RobloxApi {
             "https://apis.roblox.com/game-passes/v1/universes/{}/game-passes/{}/creator",
             experience_id, game_pass_id
         );
+        let client = self.open_cloud_client_required(
+            format!("game pass {} lookup", game_pass_id),
+            "game-pass:read",
+        )?;
         let response = self
-            .send_authenticated_request("GET", move |client| Ok(client.get(url.clone())))
+            .send_open_cloud_request("GET", client.get(url))
             .await
             .map_err(|error| error.with_required_scope("game-pass:read"))?;
 
@@ -87,24 +93,26 @@ impl RobloxApi {
             "https://apis.roblox.com/game-passes/v1/universes/{}/game-passes",
             experience_id
         );
+        let client = self.open_cloud_client_required(
+            format!("game pass creation for universe {}", experience_id),
+            "game-pass:write",
+        )?;
+        let image = Part::bytes(file_data)
+            .file_name(file_name)
+            .mime_str(&mime)?;
+        let mut form = Form::new()
+            .text("name", name)
+            .text("description", description)
+            .part("imageFile", image);
+        if let Some(price) = price {
+            form = form
+                .text("isForSale", "true")
+                .text("price", price.to_string());
+        } else {
+            form = form.text("isForSale", "false");
+        }
         let response = self
-            .send_authenticated_request("POST", move |client| {
-                let image = Part::bytes(file_data.clone())
-                    .file_name(file_name.clone())
-                    .mime_str(&mime)?;
-                let mut form = Form::new()
-                    .text("name", name.clone())
-                    .text("description", description.clone())
-                    .part("imageFile", image);
-                if let Some(price) = price {
-                    form = form
-                        .text("isForSale", "true")
-                        .text("price", price.to_string());
-                } else {
-                    form = form.text("isForSale", "false");
-                }
-                Ok(client.post(url.clone()).multipart(form))
-            })
+            .send_open_cloud_request("POST", client.post(url).multipart(form))
             .await
             .map_err(|error| error.with_required_scope("game-pass:write"))?;
 
@@ -128,23 +136,25 @@ impl RobloxApi {
             "https://apis.roblox.com/game-passes/v1/universes/{}/game-passes/{}",
             experience_id, game_pass_id
         );
+        let client = self.open_cloud_client_required(
+            format!("game pass {} update", game_pass_id),
+            "game-pass:write",
+        )?;
+        let mut form = Form::new()
+            .text("name", name)
+            .text("description", description)
+            .text("isForSale", price.is_some().to_string());
+        if let Some(price) = price {
+            form = form.text("price", price.to_string());
+        }
+        if let Some((file_data, file_name, mime)) = file_data {
+            let image = Part::bytes(file_data)
+                .file_name(file_name)
+                .mime_str(&mime)?;
+            form = form.part("imageFile", image);
+        }
         let response = self
-            .send_authenticated_request("PATCH", move |client| {
-                let mut form = Form::new()
-                    .text("name", name.clone())
-                    .text("description", description.clone())
-                    .text("isForSale", price.is_some().to_string());
-                if let Some(price) = price {
-                    form = form.text("price", price.to_string());
-                }
-                if let Some((file_data, file_name, mime)) = &file_data {
-                    let image = Part::bytes(file_data.clone())
-                        .file_name(file_name.clone())
-                        .mime_str(mime)?;
-                    form = form.part("imageFile", image);
-                }
-                Ok(client.patch(url.clone()).multipart(form))
-            })
+            .send_open_cloud_request("PATCH", client.patch(url).multipart(form))
             .await
             .map_err(|error| error.with_required_scope("game-pass:write"))?;
         drop(response);

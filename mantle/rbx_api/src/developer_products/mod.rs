@@ -25,16 +25,21 @@ impl RobloxApi {
             "https://apis.roblox.com/developer-products/v2/universes/{}/developer-products",
             experience_id
         );
+        let client = self.open_cloud_client_required(
+            format!("developer product creation for universe {}", experience_id),
+            "developer-product:write",
+        )?;
         let response = self
-            .send_authenticated_request("POST", move |client| {
-                Ok(client.post(url.clone()).multipart(
+            .send_open_cloud_request(
+                "POST",
+                client.post(url).multipart(
                     Form::new()
-                        .text("name", name.clone())
-                        .text("description", description.clone())
+                        .text("name", name)
+                        .text("description", description)
                         .text("isForSale", "true")
                         .text("price", price.to_string()),
-                ))
-            })
+                ),
+            )
             .await
             .map_err(|error| error.with_required_scope("developer-product:write"))?;
 
@@ -50,14 +55,16 @@ impl RobloxApi {
             "https://apis.roblox.com/developer-products/v2/universes/{}/developer-products/creator",
             experience_id
         );
+        let client = self.open_cloud_client_required(
+            format!("developer product listing for universe {}", experience_id),
+            "developer-product:read",
+        )?;
+        let mut request = client.get(url).query(&[("pageSize", "100")]);
+        if let Some(page_token) = &page_token {
+            request = request.query(&[("pageToken", page_token)]);
+        }
         let response = self
-            .send_authenticated_request("GET", move |client| {
-                let mut request = client.get(url.clone()).query(&[("pageSize", "100")]);
-                if let Some(page_token) = &page_token {
-                    request = request.query(&[("pageToken", page_token)]);
-                }
-                Ok(request)
-            })
+            .send_open_cloud_request("GET", request)
             .await
             .map_err(|error| error.with_required_scope("developer-product:read"))?;
 
@@ -98,16 +105,21 @@ impl RobloxApi {
             "https://apis.roblox.com/developer-products/v2/universes/{}/developer-products/{}",
             experience_id, product_id
         );
+        let client = self.open_cloud_client_required(
+            format!("developer product {} update", product_id),
+            "developer-product:write",
+        )?;
         let response = self
-            .send_authenticated_request("PATCH", move |client| {
-                Ok(client.patch(url.clone()).multipart(
+            .send_open_cloud_request(
+                "PATCH",
+                client.patch(url).multipart(
                     Form::new()
-                        .text("name", name.clone())
-                        .text("description", description.clone())
+                        .text("name", name)
+                        .text("description", description)
                         .text("isForSale", "true")
                         .text("price", price.to_string()),
-                ))
-            })
+                ),
+            )
             .await
             .map_err(|error| error.with_required_scope("developer-product:write"))?;
         drop(response);
@@ -126,15 +138,20 @@ impl RobloxApi {
             "https://apis.roblox.com/developer-products/v2/universes/{}/developer-products/{}",
             experience_id, product_id
         );
+        let client = self.open_cloud_client_required(
+            format!("developer product {} icon update", product_id),
+            "developer-product:write",
+        )?;
+        let image = Part::bytes(file_data)
+            .file_name(file_name)
+            .mime_str(&mime)?;
         let response = self
-            .send_authenticated_request("PATCH", move |client| {
-                let image = Part::bytes(file_data.clone())
-                    .file_name(file_name.clone())
-                    .mime_str(&mime)?;
-                Ok(client
-                    .patch(url.clone())
-                    .multipart(Form::new().part("imageFile", image)))
-            })
+            .send_open_cloud_request(
+                "PATCH",
+                client
+                    .patch(url)
+                    .multipart(Form::new().part("imageFile", image)),
+            )
             .await
             .map_err(|error| error.with_required_scope("developer-product:write"))?;
         drop(response);
@@ -151,8 +168,12 @@ impl RobloxApi {
             "https://apis.roblox.com/developer-products/v2/universes/{}/developer-products/{}/creator",
             experience_id, product_id
         );
+        let client = self.open_cloud_client_required(
+            format!("developer product {} lookup", product_id),
+            "developer-product:read",
+        )?;
         let response = self
-            .send_authenticated_request("GET", move |client| Ok(client.get(url.clone())))
+            .send_open_cloud_request("GET", client.get(url))
             .await
             .map_err(|error| error.with_required_scope("developer-product:read"))?;
 
