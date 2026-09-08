@@ -1,6 +1,6 @@
 pub mod models;
 
-use reqwest::header;
+use reqwest::{header, StatusCode};
 use serde_json::json;
 
 use crate::{
@@ -115,7 +115,36 @@ impl RobloxApi {
                     ))
                     .header(header::CONTENT_LENGTH, 0),
             )
-            .await?;
+            .await
+            .map_err(|error| match error {
+                RobloxApiError::Roblox {
+                    status_code,
+                    request_method,
+                    request_url,
+                    reason,
+                } if status_code == StatusCode::UNAUTHORIZED => RobloxApiError::Roblox {
+                    status_code,
+                    request_method,
+                    request_url,
+                    reason: format!(
+                        "{reason}; verify the Open Cloud API key is active and was copied without quotes or a session-cookie value"
+                    ),
+                },
+                RobloxApiError::Roblox {
+                    status_code,
+                    request_method,
+                    request_url,
+                    reason,
+                } if status_code == StatusCode::FORBIDDEN => RobloxApiError::Roblox {
+                    status_code,
+                    request_method,
+                    request_url,
+                    reason: format!(
+                        "{reason}; verify the key has the legacy-universe:manage scope and access to this universe"
+                    ),
+                },
+                error => error,
+            })?;
         drop(response);
 
         Ok(())
