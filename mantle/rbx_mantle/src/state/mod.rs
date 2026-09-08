@@ -9,7 +9,6 @@ pub mod v6;
 
 use std::{
     collections::BTreeMap,
-    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
@@ -32,8 +31,8 @@ use yansi::Paint;
 
 use super::{
     config::{
-        AssetTargetConfig, Config, EnvironmentConfig, ExperienceTargetConfig, OwnerConfig,
-        PlayabilityTargetConfig, RemoteStateConfig, StateConfig, TargetConfig,
+        Config, EnvironmentConfig, ExperienceTargetConfig, OwnerConfig, PlayabilityTargetConfig,
+        RemoteStateConfig, StateConfig, TargetConfig,
     },
     resource_graph::ResourceGraph,
     roblox_resource_manager::*,
@@ -177,7 +176,7 @@ pub async fn get_state_from_source(
     };
 
     // Migrate previous state formats
-    Ok(match state {
+    let mut state = match state {
         Some(ResourceState::Unversioned(state)) => ResourceStateV6::from(ResourceStateV5::from(
             ResourceStateV4::from(ResourceStateV3::from(ResourceStateV2::from(state))),
         )),
@@ -202,7 +201,19 @@ pub async fn get_state_from_source(
         None => ResourceStateVLatest {
             environments: BTreeMap::new(),
         },
-    })
+    };
+
+    for resources in state.environments.values_mut() {
+        let resource_count = resources.len();
+        resources.retain(|resource| !resource.is_legacy_gameplay_asset());
+        if resources.len() != resource_count {
+            logger::log(
+                "Removed legacy gameplay asset resources from Mantle state. Manage these assets with Asphalt instead.",
+            );
+        }
+    }
+
+    Ok(state)
 }
 
 pub async fn get_state(
@@ -444,83 +455,6 @@ fn get_desired_experience_graph(
                 &[&badge_resource],
             ));
             resources.push(badge_resource);
-        }
-    }
-
-    if let Some(assets) = &target_config.assets {
-        for asset_config in assets {
-            let assets = match asset_config.clone() {
-                AssetTargetConfig::File(file) => {
-                    let relative_to_project = project_path.join(file.clone());
-                    let relative_to_project = relative_to_project
-                        .to_str()
-                        .ok_or(format!("Path was invalid: {}", file))?;
-                    let paths = glob::glob(relative_to_project)
-                        .map_err(|e| format!("Glob pattern invalid: {}", e))?;
-
-                    let mut assets = Vec::new();
-                    for path in paths {
-                        let path = path.map_err(|e| format!("Glob pattern invalid: {}", e))?;
-                        let name = path
-                            .file_stem()
-                            .and_then(OsStr::to_str)
-                            .ok_or(format!("Asset path is not a file: {}", path.display()))?
-                            .to_owned();
-
-                        let relative_file = path.canonicalize();
-                        let relative_file =
-                            relative_file.map_err(|e| format!("Failed to canonizalize: {}", e))?;
-                        let relative_file = relative_file
-                            .strip_prefix(
-                                project_path
-                                    .canonicalize()
-                                    .map_err(|e| format!("Failed to canonizalize: {}", e))?,
-                            )
-                            .map_err(|e| format!("Failed to relativize path: {}", e))?
-                            .to_str()
-                            .ok_or(format!("Path was invalid: {}", path.display()))?;
-
-                        assets.push((relative_file.to_owned(), name));
-                    }
-                    assets
-                }
-                AssetTargetConfig::FileWithAlias { file, name } => vec![(file, name)],
-            };
-
-            for (file, alias) in assets {
-                let resource_inputs = match Path::new(&file).extension().map(OsStr::to_str) {
-                    Some(Some("bmp" | "gif" | "jpeg" | "jpg" | "png" | "tga")) => {
-                        RobloxInputs::ImageAsset(FileWithGroupIdInputs {
-                            file_path: file.clone(),
-                            file_hash: get_file_hash(project_path.join(&file))?,
-                            group_id,
-                        })
-                    }
-                    Some(Some("ogg" | "mp3")) => RobloxInputs::AudioAsset(FileWithGroupIdInputs {
-                        file_path: file.clone(),
-                        file_hash: get_file_hash(project_path.join(&file))?,
-                        group_id,
-                    }),
-                    _ => return Err(format!("Unable to determine asset type for file: {}", file)),
-                };
-
-                let alias_folder = match resource_inputs {
-                    RobloxInputs::ImageAsset(_) => "Images",
-                    RobloxInputs::AudioAsset(_) => "Audio",
-                    _ => unreachable!(),
-                };
-
-                let asset_resource =
-                    RobloxResource::new(&format!("asset_{}", file), resource_inputs, &[]);
-                resources.push(RobloxResource::new(
-                    &format!("assetAlias_{}", file),
-                    RobloxInputs::AssetAlias(AssetAliasInputs {
-                        name: format!("{}/{}", alias_folder, alias),
-                    }),
-                    &[&experience, &asset_resource],
-                ));
-                resources.push(asset_resource);
-            }
         }
     }
 
@@ -789,53 +723,6 @@ pub async fn import_graph(
             &[&badge_resource],
         ));
         resources.push(badge_resource);
-    }
-
-    logger::log("Importing assets");
-    let assets = roblox_api.get_all_asset_aliases(target_id).await?;
-    for asset in assets {
-        let resource_data = match asset.asset.type_id {
-            1 => Some((
-                RobloxInputs::ImageAsset(FileWithGroupIdInputs {
-                    file_path: "fake-path".to_owned(),
-                    file_hash: "fake-hash".to_owned(),
-                    group_id,
-                }),
-                RobloxOutputs::ImageAsset(ImageAssetOutputs {
-                    asset_id: asset.target_id,
-                    decal_asset_id: None,
-                }),
-            )),
-            3 => Some((
-                RobloxInputs::AudioAsset(FileWithGroupIdInputs {
-                    file_path: "fake-path".to_owned(),
-                    file_hash: "fake-hash".to_owned(),
-                    group_id,
-                }),
-                RobloxOutputs::AudioAsset(AssetOutputs {
-                    asset_id: asset.target_id,
-                }),
-            )),
-            _ => None,
-        };
-
-        if let Some((resource_inputs, resource_outputs)) = resource_data {
-            let asset_resource = RobloxResource::existing(
-                &format!("asset_{}", asset.name),
-                resource_inputs,
-                resource_outputs,
-                &[],
-            );
-            resources.push(RobloxResource::existing(
-                &format!("assetAlias_{}", asset.name),
-                RobloxInputs::AssetAlias(AssetAliasInputs {
-                    name: asset.name.clone(),
-                }),
-                RobloxOutputs::AssetAlias(AssetAliasOutputs { name: asset.name }),
-                &[&experience, &asset_resource],
-            ));
-            resources.push(asset_resource);
-        }
     }
 
     logger::log("Importing spatial voice settings");

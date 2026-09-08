@@ -100,7 +100,11 @@ Follow the [official Roblox guide](https://create.roblox.com/docs/cloud/open-clo
 Cloud API key. You must grant the key access to the following services:
 
 * `universe-places:write` for all experiences you want to manage with Mantle
-* `asset:read` and `asset:write` in order to manage assets with Mantle
+
+Mantle does not upload generic gameplay assets. Use [Asphalt](https://github.com/jackTabsCode/asphalt)
+for gameplay asset synchronization instead. Media files declared as part of a Mantle-managed resource,
+such as an experience icon, thumbnail, game pass icon, developer product icon, or badge icon, remain part
+of that resource and use the permissions required by the corresponding Roblox operation.
 
 To authenticate with the Cloud API, you must provide the `MANTLE_OPEN_CLOUD_API_KEY` environment variable. You can
 set your environment variable in various ways, like the following:

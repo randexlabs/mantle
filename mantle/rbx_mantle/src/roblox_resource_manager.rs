@@ -8,21 +8,15 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Timelike, Utc};
 use log::info;
 use rbx_api::{
-    asset_permissions::models::{
-        GrantAssetPermissionRequestAction, GrantAssetPermissionRequestSubjectType,
-        GrantAssetPermissionsRequestRequest,
-    },
-    assets::models::{CreateAssetQuota, CreateAudioAssetResponse, Creator, QuotaDuration},
     badges::models::CreateBadgeResponse,
     developer_products::models::DeveloperProductConfigResponse,
     experiences::models::{CreateExperienceResponse, ExperienceConfigurationModel},
     game_passes::models::GetGamePassResponse,
-    models::{AssetId, AssetTypeId, CreatorType, UploadImageResponse},
+    models::{AssetId, CreatorType, UploadImageResponse},
     notifications::models::CreateNotificationResponse,
     places::models::PlaceConfigurationModel,
     social_links::models::{CreateSocialLinkResponse, SocialLinkType},
     spatial_voice::models::UpdateSpatialVoiceSettingsRequest,
-    user::models::GetAuthenticatedUserResponse,
     RobloxApi,
 };
 use rbx_auth::{RobloxCookieStore, RobloxCsrfTokenStore};
@@ -33,9 +27,7 @@ use rbxcloud::rbx::{
 use serde::{Deserialize, Serialize};
 use yansi::Paint;
 
-use super::resource_graph::{
-    all_outputs, optional_output, single_output, Resource, ResourceId, ResourceManager,
-};
+use super::resource_graph::{all_outputs, single_output, Resource, ResourceId, ResourceManager};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -143,9 +135,12 @@ pub enum RobloxInputs {
     Pass(PassInputs),
     Badge(BadgeInputs),
     BadgeIcon(FileInputs),
-    ImageAsset(FileWithGroupIdInputs),
-    AudioAsset(FileWithGroupIdInputs),
-    AssetAlias(AssetAliasInputs),
+    #[serde(rename = "imageAsset")]
+    LegacyImageAsset(FileWithGroupIdInputs),
+    #[serde(rename = "audioAsset")]
+    LegacyAudioAsset(FileWithGroupIdInputs),
+    #[serde(rename = "assetAlias")]
+    LegacyAssetAlias(AssetAliasInputs),
     SpatialVoice(SpatialVoiceInputs),
     Notification(NotificationInputs),
 }
@@ -227,9 +222,12 @@ pub enum RobloxOutputs {
     Pass(PassOutputs),
     Badge(AssetWithInitialIconOutputs),
     BadgeIcon(AssetOutputs),
-    ImageAsset(ImageAssetOutputs),
-    AudioAsset(AssetOutputs),
-    AssetAlias(AssetAliasOutputs),
+    #[serde(rename = "imageAsset")]
+    LegacyImageAsset(ImageAssetOutputs),
+    #[serde(rename = "audioAsset")]
+    LegacyAudioAsset(AssetOutputs),
+    #[serde(rename = "assetAlias")]
+    LegacyAssetAlias(AssetAliasOutputs),
     SpatialVoice,
     Notification(NotificationOutputs),
 }
@@ -270,6 +268,15 @@ impl RobloxResource {
     pub fn add_dependency(&mut self, dependency: &RobloxResource) -> &mut Self {
         self.dependencies.push(dependency.get_id());
         self
+    }
+
+    pub fn is_legacy_gameplay_asset(&self) -> bool {
+        matches!(
+            &self.inputs,
+            RobloxInputs::LegacyImageAsset(_)
+                | RobloxInputs::LegacyAudioAsset(_)
+                | RobloxInputs::LegacyAssetAlias(_)
+        )
     }
 }
 
@@ -328,7 +335,6 @@ pub struct RobloxResourceManager {
     roblox_cloud: Option<RbxCloud>,
     project_path: PathBuf,
     payment_source: CreatorType,
-    user: GetAuthenticatedUserResponse,
 }
 
 impl RobloxResourceManager {
@@ -351,13 +357,12 @@ impl RobloxResourceManager {
             RobloxApi::new(cookie_store, csrf_token_store, open_cloud_api_key.clone())?;
 
         logger::start_action("Logging in:");
-        let user = match roblox_api.get_authenticated_user().await {
+        match roblox_api.get_authenticated_user().await {
             Ok(user) => {
                 logger::log(format!("User ID: {}", user.id));
                 logger::log(format!("User name: {}", user.name));
                 logger::log(format!("User display name: {}", user.display_name));
                 logger::end_action_without_message();
-                user
             }
             Err(err) => {
                 return {
@@ -375,7 +380,6 @@ impl RobloxResourceManager {
             roblox_cloud,
             project_path: project_path.to_path_buf(),
             payment_source,
-            user,
         })
     }
 
@@ -663,103 +667,11 @@ impl ResourceManager<RobloxInputs, RobloxOutputs> for RobloxResourceManager {
                     asset_id: badge.initial_icon_asset_id,
                 }))
             }
-            RobloxInputs::ImageAsset(inputs) => {
-                let creator = match inputs.group_id {
-                    Some(group_id) => Creator::GroupId(group_id.to_string()),
-                    None => Creator::UserId(self.user.id.to_string()),
-                };
-                let asset_id = self
-                    .roblox_api
-                    .create_image_asset(self.get_path(&inputs.file_path), creator)
-                    .await?;
-                Ok(RobloxOutputs::ImageAsset(ImageAssetOutputs {
-                    asset_id,
-                    // TODO: This breaks archiving assets.
-                    decal_asset_id: None,
-                }))
-            }
-            RobloxInputs::AudioAsset(inputs) => {
-                let CreateAssetQuota {
-                    usage,
-                    capacity,
-                    expiration_time,
-                    duration,
-                } = self
-                    .roblox_api
-                    .get_create_asset_quota(AssetTypeId::Audio)
-                    .await?;
-
-                let quota_reset = format_quota_reset(match expiration_time {
-                    Some(ref x) => DateTime::parse_from_rfc3339(x)
-                        .map_err(|e| format!("Unable to parse expiration_time: {}", e))?
-                        .with_timezone(&Utc),
-                    None => {
-                        Utc::now()
-                            + match duration {
-                                // TODO: Learn how Roblox computes a "Month" to ensure this is an accurate estimate
-                                QuotaDuration::Month => Duration::days(30),
-                            }
-                    }
-                });
-
-                if usage < capacity {
-                    logger::log("");
-                    logger::log(Paint::yellow(
-                        format!(
-                        "You will have {} audio upload(s) remaining in the current period after creation. Your quota will reset in {}.",
-                        capacity - usage - 1,
-                        quota_reset
-                    )));
-
-                    let CreateAudioAssetResponse { id } = self
-                        .roblox_api
-                        .create_audio_asset(
-                            self.get_path(inputs.file_path),
-                            inputs.group_id,
-                            self.payment_source.clone(),
-                        )
-                        .await?;
-
-                    Ok(RobloxOutputs::AudioAsset(AssetOutputs { asset_id: id }))
-                } else {
-                    Err(format!(
-                        "You have reached your audio upload quota. Your quota will reset in {}.",
-                        quota_reset
-                    ))
-                }
-            }
-            RobloxInputs::AssetAlias(inputs) => {
-                let experience = single_output!(dependency_outputs, RobloxOutputs::Experience);
-
-                let image_asset = optional_output!(dependency_outputs, RobloxOutputs::ImageAsset);
-                let audio_asset = optional_output!(dependency_outputs, RobloxOutputs::AudioAsset);
-                let asset_id = match (image_asset, audio_asset) {
-                    (Some(image_asset), None) => image_asset.asset_id,
-                    (None, Some(audio_asset)) => audio_asset.asset_id,
-                    _ => panic!("Missing expected output."),
-                };
-
-                self.roblox_api
-                    .create_asset_alias(experience.asset_id, asset_id, inputs.name.clone())
-                    .await?;
-
-                if audio_asset.is_some() {
-                    self.roblox_api
-                        .grant_asset_permissions(
-                            asset_id,
-                            GrantAssetPermissionsRequestRequest {
-                                subject_id: experience.asset_id,
-                                subject_type: GrantAssetPermissionRequestSubjectType::Universe,
-                                action: GrantAssetPermissionRequestAction::Use,
-                            },
-                        )
-                        .await?;
-                }
-
-                Ok(RobloxOutputs::AssetAlias(AssetAliasOutputs {
-                    name: inputs.name,
-                }))
-            }
+            RobloxInputs::LegacyImageAsset(_)
+            | RobloxInputs::LegacyAudioAsset(_)
+            | RobloxInputs::LegacyAssetAlias(_) => Err(
+                "Generic gameplay asset resources are no longer supported by Mantle. Use Asphalt instead: https://github.com/jackTabsCode/asphalt".to_owned(),
+            ),
             RobloxInputs::SpatialVoice(inputs) => {
                 let experience = single_output!(dependency_outputs, RobloxOutputs::Experience);
 
@@ -915,49 +827,14 @@ impl ResourceManager<RobloxInputs, RobloxOutputs> for RobloxResourceManager {
                     asset_id: target_id,
                 }))
             }
-            (RobloxInputs::ImageAsset(_), RobloxOutputs::ImageAsset(_)) => {
-                self.create(inputs, dependency_outputs, price).await
-            }
-            (RobloxInputs::AudioAsset(_), RobloxOutputs::AudioAsset(_)) => {
-                self.create(inputs, dependency_outputs, price).await
-            }
-            (RobloxInputs::AssetAlias(inputs), RobloxOutputs::AssetAlias(outputs)) => {
-                let experience = single_output!(dependency_outputs, RobloxOutputs::Experience);
-
-                let image_asset = optional_output!(dependency_outputs, RobloxOutputs::ImageAsset);
-                let audio_asset = optional_output!(dependency_outputs, RobloxOutputs::AudioAsset);
-                let asset_id = match (image_asset, audio_asset) {
-                    (Some(image_asset), None) => image_asset.asset_id,
-                    (None, Some(audio_asset)) => audio_asset.asset_id,
-                    _ => panic!("Missing expected output."),
-                };
-
-                self.roblox_api
-                    .update_asset_alias(
-                        experience.asset_id,
-                        asset_id,
-                        outputs.name,
-                        inputs.name.clone(),
-                    )
-                    .await?;
-
-                if audio_asset.is_some() {
-                    self.roblox_api
-                        .grant_asset_permissions(
-                            asset_id,
-                            GrantAssetPermissionsRequestRequest {
-                                subject_id: experience.asset_id,
-                                subject_type: GrantAssetPermissionRequestSubjectType::Universe,
-                                action: GrantAssetPermissionRequestAction::Use,
-                            },
-                        )
-                        .await?;
-                }
-
-                Ok(RobloxOutputs::AssetAlias(AssetAliasOutputs {
-                    name: inputs.name,
-                }))
-            }
+            (
+                RobloxInputs::LegacyImageAsset(_)
+                | RobloxInputs::LegacyAudioAsset(_)
+                | RobloxInputs::LegacyAssetAlias(_),
+                _,
+            ) => Err(
+                "Generic gameplay asset resources are no longer supported by Mantle. Use Asphalt instead: https://github.com/jackTabsCode/asphalt".to_owned(),
+            ),
             (RobloxInputs::SpatialVoice(inputs), RobloxOutputs::SpatialVoice) => {
                 let experience = single_output!(dependency_outputs, RobloxOutputs::Experience);
 
@@ -1097,23 +974,9 @@ impl ResourceManager<RobloxInputs, RobloxOutputs> for RobloxResourceManager {
                     .await?;
             }
             RobloxOutputs::BadgeIcon(_) => {}
-            RobloxOutputs::ImageAsset(outputs) => {
-                // TODO: Can we make this not optional and just not import the image asset? Maybe?
-                if let Some(decal_asset_id) = outputs.decal_asset_id {
-                    self.roblox_api.archive_asset(decal_asset_id).await?;
-                }
-                // TODO: if no decal ID is available use Open Cloud API to archive. rbx_cloud currently doesn't support this API
-            }
-            RobloxOutputs::AudioAsset(outputs) => {
-                self.roblox_api.archive_asset(outputs.asset_id).await?;
-            }
-            RobloxOutputs::AssetAlias(outputs) => {
-                let experience = single_output!(dependency_outputs, RobloxOutputs::Experience);
-
-                self.roblox_api
-                    .delete_asset_alias(experience.asset_id, outputs.name)
-                    .await?;
-            }
+            RobloxOutputs::LegacyImageAsset(_)
+            | RobloxOutputs::LegacyAudioAsset(_)
+            | RobloxOutputs::LegacyAssetAlias(_) => {}
             RobloxOutputs::SpatialVoice => {
                 let experience = single_output!(dependency_outputs, RobloxOutputs::Experience);
 

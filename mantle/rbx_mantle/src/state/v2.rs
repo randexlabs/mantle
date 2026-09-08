@@ -324,12 +324,12 @@ impl From<ResourceStateV2> for ResourceStateV3 {
                     .into(),
                     "imageAsset" => RobloxResource::existing(
                         &format!("asset_{}", resource.id),
-                        RobloxInputs::ImageAsset(FileWithGroupIdInputs {
+                        RobloxInputs::LegacyImageAsset(FileWithGroupIdInputs {
                             file_path: input_value!(resource, "filePath"),
                             file_hash: input_value!(resource, "fileHash"),
                             group_id: input_value!(resource, "groupId"),
                         }),
-                        RobloxOutputs::ImageAsset(ImageAssetOutputs {
+                        RobloxOutputs::LegacyImageAsset(ImageAssetOutputs {
                             asset_id: output_value!(resource, "assetId"),
                             decal_asset_id: output_value!(resource, "decalAssetId"),
                         }),
@@ -338,12 +338,12 @@ impl From<ResourceStateV2> for ResourceStateV3 {
                     .into(),
                     "audioAsset" => RobloxResource::existing(
                         &format!("asset_{}", resource.id),
-                        RobloxInputs::AudioAsset(FileWithGroupIdInputs {
+                        RobloxInputs::LegacyAudioAsset(FileWithGroupIdInputs {
                             file_path: input_value!(resource, "filePath"),
                             file_hash: input_value!(resource, "fileHash"),
                             group_id: input_value!(resource, "groupId"),
                         }),
-                        RobloxOutputs::AudioAsset(AssetOutputs {
+                        RobloxOutputs::LegacyAudioAsset(AssetOutputs {
                             asset_id: output_value!(resource, "assetId"),
                         }),
                         &[],
@@ -351,10 +351,10 @@ impl From<ResourceStateV2> for ResourceStateV3 {
                     .into(),
                     "assetAlias" => RobloxResource::existing(
                         &format!("assetAlias_{}", resource.id),
-                        RobloxInputs::AssetAlias(AssetAliasInputs {
+                        RobloxInputs::LegacyAssetAlias(AssetAliasInputs {
                             name: input_value!(resource, "name"),
                         }),
-                        RobloxOutputs::AssetAlias(AssetAliasOutputs {
+                        RobloxOutputs::LegacyAssetAlias(AssetAliasOutputs {
                             name: output_value!(resource, "name"),
                         }),
                         &[

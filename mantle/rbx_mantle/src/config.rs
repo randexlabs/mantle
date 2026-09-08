@@ -484,44 +484,6 @@ pub struct ExperienceTargetConfig {
     ///    in `YYYY-MM-DD hh::mm::ss.ns` format.
     pub badges: Option<HashMap<String, BadgeTargetConfig>>,
 
-    /// skip_properties()
-    ///
-    /// A list of assets to include in your experience.
-    ///
-    /// If set to a string, the value should be a file path or glob to an asset
-    /// or list of assets. The `rbxgameasset` name of each matched file will be
-    /// its file name without the extension. For example,
-    /// `assets/pirate-flag.png` will be given the `rbxgameasset` name
-    /// `pirate-flag` and will be accessible in the experience with
-    /// `rbxgameasset://Images/pirate-flag`.
-    ///
-    /// If set to an object, `file` should be set to a file path (it will not be
-    /// interpreted as a glob), and `name` will be the name of the
-    /// `rbxgameasset`.
-    ///
-    /// ```yml title="Example"
-    /// target:
-    ///   experience:
-    ///     assets:
-    ///       - assets/*
-    ///       - file: marketing/icon.png
-    ///         name: game-icon
-    /// ```
-    ///
-    /// :::caution
-    /// Roblox provides each user a monthly quota of audio uploads. Mantle will let you know each time it
-    /// uploads an audio asset how many uploads you have left and when your quota will reset.
-    /// :::
-    ///
-    /// Each file will be uploaded as the asset type matching its file
-    /// extension. Supported asset types and their file extensions:
-    ///
-    /// | Asset type | File extensions                                 |
-    /// | :--------- | :---------------------------------------------- |
-    /// | Image      | `.bmp`, `.gif`, `.jpeg`, `.jpg`, `.png`, `.tga` |
-    /// | Audio      | `.ogg`, `.mp3`                                  |
-    pub assets: Option<Vec<AssetTargetConfig>>,
-
     /// Spatial voice configuration.
     pub spatial_voice: Option<SpatialVoiceTargetConfig>,
 
@@ -770,13 +732,6 @@ pub struct BadgeTargetConfig {
     ///
     /// Whether or not the badge is enabled.
     pub enabled: Option<bool>,
-}
-
-#[derive(JsonSchema, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase", untagged)]
-pub enum AssetTargetConfig {
-    File(String),
-    FileWithAlias { file: String, name: String },
 }
 
 #[derive(JsonSchema, Serialize, Deserialize, Clone)]
@@ -1232,4 +1187,18 @@ pub fn load_project_config(project: Option<&str>) -> Result<(PathBuf, Config), S
     ));
 
     Ok((project_path, config))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn rejects_generic_gameplay_asset_manifest_field() {
+        let result = serde_yaml::from_str::<Config>(
+            "environments: []\ntarget:\n  experience:\n    assets: []\n",
+        );
+
+        assert!(result.is_err());
+    }
 }

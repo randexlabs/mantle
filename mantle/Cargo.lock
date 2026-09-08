@@ -2463,7 +2463,6 @@ name = "rbx_api"
 version = "0.5.0"
 dependencies = [
  "anyhow",
- "base64 0.13.1",
  "log",
  "mime_guess",
  "rbx_auth",
