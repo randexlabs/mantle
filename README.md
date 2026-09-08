@@ -15,6 +15,9 @@
 - Removed generic gameplay asset uploads from Mantle to keep its scope focused on experience infrastructure as code.
 - This removal is intentional: this fork does not support generic gameplay asset uploads. Use [Asphalt](https://github.com/jackTabsCode/asphalt) for asset synchronization, lockfiles, and generated references.
 - Preserved resource-scoped media uploads required by Mantle-managed experience icons, thumbnails, game pass icons, developer product icons, and badge icons.
-- Removed the generic asset manifest resources, asset aliases, asset permissions, and asset upload APIs as a breaking change.
+- Removed the `rbx_api::assets`, `rbx_api::asset_aliases`, and `rbx_api::asset_permissions` modules as a breaking change.
+- Removed the generic asset API methods `create_image_asset`, `create_audio_asset`, `get_create_asset_quota`, `archive_asset`, `create_asset_alias`, `update_asset_alias`, `delete_asset_alias`, `list_asset_aliases`, `get_all_asset_aliases`, and `grant_asset_permissions`.
+- Removed the `imageAsset`, `audioAsset`, and `assetAlias` resource kinds and the `target.experience.assets` manifest field.
+- Removed the generic gameplay-asset upload workflow from the CLI; `mantle upload` remains available exclusively for uploading remote Mantle state files.
 - Removed legacy generic gameplay asset resources from loaded Mantle state without archiving or deleting them.
 - Updated the Mantle version to `0.12.0`.
