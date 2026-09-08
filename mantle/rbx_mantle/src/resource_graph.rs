@@ -725,3 +725,140 @@ pub struct ResourceDependencyChange {
     pub current_inputs_hash: String,
     pub changed_dependencies: Vec<ResourceId>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Serialize)]
+    struct TestResource {
+        id: ResourceId,
+        dependencies: Vec<ResourceId>,
+        output: u8,
+    }
+
+    impl Resource<(), u8> for TestResource {
+        fn get_id(&self) -> ResourceId {
+            self.id.clone()
+        }
+
+        fn get_inputs_hash(&self) -> String {
+            self.id.clone()
+        }
+
+        fn get_outputs_hash(&self) -> String {
+            self.output.to_string()
+        }
+
+        fn get_inputs(&self) {}
+
+        fn get_outputs(&self) -> Option<u8> {
+            Some(self.output)
+        }
+
+        fn get_dependencies(&self) -> Vec<ResourceId> {
+            self.dependencies.clone()
+        }
+
+        fn set_outputs(&mut self, outputs: u8) {
+            self.output = outputs;
+        }
+    }
+
+    struct TestResourceManager;
+
+    #[async_trait::async_trait]
+    impl ResourceManager<(), u8> for TestResourceManager {
+        async fn get_create_price(
+            &self,
+            _inputs: (),
+            _dependency_outputs: Vec<u8>,
+        ) -> Result<Option<u32>, String> {
+            Ok(None)
+        }
+
+        async fn create(
+            &self,
+            _inputs: (),
+            _dependency_outputs: Vec<u8>,
+            _price: Option<u32>,
+        ) -> Result<u8, String> {
+            Ok(0)
+        }
+
+        async fn get_update_price(
+            &self,
+            _inputs: (),
+            _outputs: u8,
+            _dependency_outputs: Vec<u8>,
+        ) -> Result<Option<u32>, String> {
+            Ok(None)
+        }
+
+        async fn update(
+            &self,
+            _inputs: (),
+            outputs: u8,
+            _dependency_outputs: Vec<u8>,
+            _price: Option<u32>,
+        ) -> Result<u8, String> {
+            Ok(outputs)
+        }
+
+        async fn delete(&self, outputs: u8, _dependency_outputs: Vec<u8>) -> Result<(), String> {
+            if outputs == 2 {
+                Err("simulated delete failure".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn reports_missing_dependencies_instead_of_calling_them_cycles() {
+        let resource = TestResource {
+            id: "child".to_owned(),
+            dependencies: vec!["missing".to_owned()],
+            output: 2,
+        };
+        let graph = ResourceGraph::new(&[resource]);
+
+        assert_eq!(
+            graph.get_topological_order().unwrap_err(),
+            "Resource 'child' depends on missing resource 'missing'."
+        );
+    }
+
+    #[tokio::test]
+    async fn preserves_dependency_chain_after_failed_delete() {
+        let resources = [
+            TestResource {
+                id: "root".to_owned(),
+                dependencies: Vec::new(),
+                output: 1,
+            },
+            TestResource {
+                id: "child".to_owned(),
+                dependencies: vec!["root".to_owned()],
+                output: 2,
+            },
+        ];
+        let previous_graph = ResourceGraph::new(&resources);
+        let mut next_graph = ResourceGraph::new(&[]);
+        let mut manager = TestResourceManager;
+
+        let result = next_graph
+            .evaluate(&previous_graph, &mut manager, false)
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            next_graph
+                .get_resource_list()
+                .iter()
+                .map(|resource| resource.get_id())
+                .collect::<Vec<_>>(),
+            vec!["root", "child"]
+        );
+    }
+}
