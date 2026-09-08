@@ -17,4 +17,4 @@
 - Preserved resource-scoped media uploads required by Mantle-managed experience icons, thumbnails, game pass icons, developer product icons, and badge icons.
 - Removed the generic asset manifest resources, asset aliases, asset permissions, and asset upload APIs as a breaking change.
 - Removed legacy generic gameplay asset resources from loaded Mantle state without archiving or deleting them.
-- Updated the Mantle version to `0.11.21`.
+- Updated the Mantle version to `0.12.0`.
