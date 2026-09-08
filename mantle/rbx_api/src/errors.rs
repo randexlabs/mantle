@@ -17,9 +17,11 @@ pub enum RobloxApiError {
     #[error("Authorization has been denied for this request. Check your ROBLOSECURITY cookie.")]
     Authorization,
 
-    #[error("Roblox error ({status_code}): {reason}")]
+    #[error("Roblox API request failed: {request_method} {request_url} ({status_code}): {reason}")]
     Roblox {
         status_code: StatusCode,
+        request_method: String,
+        request_url: String,
         reason: String,
     },
 
@@ -92,23 +94,51 @@ pub struct RobloxApiErrorResponse {
     // Some errors return a `success` property which can be used to check for errors
     #[serde(alias = "Success")]
     pub success: Option<bool>,
+
+    // Open Cloud APIs use an errorCode/errorMessage pair.
+    #[serde(alias = "ErrorCode")]
+    pub error_code: Option<String>,
+
+    #[serde(alias = "ErrorMessage")]
+    pub error_message: Option<String>,
+
+    pub field: Option<String>,
+    pub hint: Option<String>,
 }
 
 impl RobloxApiErrorResponse {
     pub fn reason(self) -> Option<String> {
+        let mut reasons = Vec::new();
+
+        if let Some(error_code) = self.error_code {
+            reasons.push(format!("code: {}", error_code));
+        }
+        if let Some(error_message) = self.error_message {
+            reasons.push(error_message);
+        }
+        if let Some(field) = self.field {
+            reasons.push(format!("field: {}", field));
+        }
+        if let Some(hint) = self.hint {
+            reasons.push(format!("hint: {}", hint));
+        }
         if let Some(message) = self.message {
-            Some(message)
-        } else if let Some(title) = self.title {
-            Some(title)
-        } else if let Some(errors) = self.errors {
+            reasons.push(message);
+        }
+        if let Some(title) = self.title {
+            reasons.push(title);
+        }
+        if let Some(errors) = self.errors {
             for error in errors {
                 if let Some(message) = error.reason() {
-                    return Some(message);
+                    reasons.push(message);
                 }
             }
-            None
-        } else {
-            None
         }
+        if self.success == Some(false) {
+            reasons.push("success: false".to_owned());
+        }
+
+        (!reasons.is_empty()).then(|| reasons.join("; "))
     }
 }

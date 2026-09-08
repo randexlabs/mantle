@@ -2,50 +2,110 @@ use std::{ffi::OsStr, path::Path};
 
 use log::{debug, trace};
 use rbx_auth::CsrfTokenRequestError;
-use reqwest::{multipart::Part, Body};
+use reqwest::{header::HeaderMap, multipart::Part, Body, StatusCode};
 use scraper::{Html, Selector};
 use serde::de;
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
+use url::Url;
 
 use crate::{errors::RobloxApiErrorResponse, RobloxApiError, RobloxApiResult};
 
+const MAX_ERROR_BODY_LENGTH: usize = 2048;
+
 pub async fn get_roblox_api_error_from_response(response: reqwest::Response) -> RobloxApiError {
     let status_code = response.status();
-    let reason = {
-        if let Some(content_type) = response.headers().get(reqwest::header::CONTENT_TYPE) {
-            if content_type == "application/json" {
-                match response.json::<RobloxApiErrorResponse>().await {
-                    Ok(error) => error.reason(),
-                    Err(_) => None,
-                }
-            } else if content_type == "text/html"
-                || content_type == "text/html; charset=utf-8"
-                || content_type == "text/html; charset=us-ascii"
-            {
-                match response.text().await {
-                    Ok(text) => {
-                        let html = Html::parse_fragment(&text);
-                        let selector =
-                            Selector::parse(".request-error-page-content .error-message").unwrap();
+    // reqwest 0.11 does not expose the originating request from Response, so
+    // callers using `handle` are reported with an unknown method. Newer
+    // request helpers can pass the method directly to `parse_roblox_api_error`.
+    let request_method = "UNKNOWN";
+    let request_url = sanitize_url(response.url());
+    let headers = response.headers().clone();
+    let body = response.text().await.unwrap_or_default();
 
-                        html.select(&selector)
-                            .next()
-                            .map(|e| e.text().map(|t| t.trim()).collect::<Vec<_>>().join(" "))
-                    }
-                    Err(_) => None,
-                }
-            } else {
-                response.text().await.ok()
-            }
-        } else {
-            None
-        }
+    parse_roblox_api_error(status_code, &request_method, &request_url, &headers, &body)
+}
+
+fn sanitize_url(url: &Url) -> String {
+    let mut sanitized = url.clone();
+    sanitized.set_query(None);
+    sanitized.to_string()
+}
+
+fn truncate_body(body: &str) -> Option<String> {
+    let body = body.trim();
+    if body.is_empty() {
+        return None;
+    }
+
+    let mut truncated = body.chars().take(MAX_ERROR_BODY_LENGTH).collect::<String>();
+    if body.chars().count() > MAX_ERROR_BODY_LENGTH {
+        truncated.push_str("…");
+    }
+    Some(truncated)
+}
+
+fn parse_html_error(body: &str) -> Option<String> {
+    let html = Html::parse_fragment(body);
+    let selector = Selector::parse(".request-error-page-content .error-message").ok()?;
+    html.select(&selector)
+        .next()
+        .map(|element| {
+            element
+                .text()
+                .map(|text| text.trim())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|message| !message.is_empty())
+}
+
+fn parse_roblox_api_error(
+    status_code: StatusCode,
+    request_method: &str,
+    request_url: &str,
+    headers: &HeaderMap,
+    body: &str,
+) -> RobloxApiError {
+    let content_type = headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    let reason = if content_type.starts_with("application/json") {
+        serde_json::from_str::<RobloxApiErrorResponse>(body)
+            .ok()
+            .and_then(RobloxApiErrorResponse::reason)
+    } else if content_type.starts_with("text/html") {
+        parse_html_error(body)
+    } else {
+        None
     };
+
+    let reason = reason
+        .or_else(|| truncate_body(body))
+        .unwrap_or_else(|| "Roblox returned no diagnostic details.".to_owned());
 
     RobloxApiError::Roblox {
         status_code,
-        reason: reason.unwrap_or_else(|| "Unknown error".to_owned()),
+        request_method: request_method.to_owned(),
+        request_url: request_url.to_owned(),
+        reason,
+    }
+}
+
+pub async fn handle_response(response: reqwest::Response) -> RobloxApiResult<reqwest::Response> {
+    // Check for redirects to the login page
+    let url = response.url();
+    if matches!(url.domain(), Some("www.roblox.com")) && url.path() == "/NewLogin" {
+        return Err(RobloxApiError::Authorization);
+    }
+
+    if response.status().is_success() {
+        Ok(response)
+    } else {
+        Err(get_roblox_api_error_from_response(response).await)
     }
 }
 
@@ -53,20 +113,7 @@ pub async fn handle(
     result: Result<reqwest::Response, CsrfTokenRequestError>,
 ) -> RobloxApiResult<reqwest::Response> {
     match result {
-        Ok(response) => {
-            // Check for redirects to the login page
-            let url = response.url();
-            if matches!(url.domain(), Some("www.roblox.com")) && url.path() == "/NewLogin" {
-                return Err(RobloxApiError::Authorization);
-            }
-
-            // Check status code
-            if response.status().is_success() {
-                Ok(response)
-            } else {
-                Err(get_roblox_api_error_from_response(response).await)
-            }
-        }
+        Ok(response) => handle_response(response).await,
         Err(CsrfTokenRequestError::RequestError(error)) => Err(error.into()),
         Err(error) => Err(error.into()),
     }
@@ -100,4 +147,48 @@ pub async fn get_file_part(file_path: &Path) -> RobloxApiResult<Part> {
         .file_name(file_name)
         .mime_str(mime.as_ref())
         .unwrap())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_roblox_api_error;
+    use reqwest::{header::HeaderMap, StatusCode};
+
+    #[test]
+    fn reports_open_cloud_error_fields() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            "application/json".parse().unwrap(),
+        );
+
+        let error = parse_roblox_api_error(
+            StatusCode::NOT_FOUND,
+            "POST",
+            "https://apis.roblox.com/game-passes/v1/universes/123/game-passes",
+            &headers,
+            r#"{"errorCode":"UniverseNotFound","errorMessage":"The universe was not found.","field":"universeId"}"#,
+        );
+
+        assert_eq!(
+            error.to_string(),
+            "Roblox API request failed: POST https://apis.roblox.com/game-passes/v1/universes/123/game-passes (404 Not Found): code: UniverseNotFound; The universe was not found.; field: universeId"
+        );
+    }
+
+    #[test]
+    fn reports_url_and_empty_response() {
+        let error = parse_roblox_api_error(
+            StatusCode::NOT_FOUND,
+            "GET",
+            "https://apis.roblox.com/example?token=secret",
+            &HeaderMap::new(),
+            "",
+        );
+
+        assert_eq!(
+            error.to_string(),
+            "Roblox API request failed: GET https://apis.roblox.com/example (404 Not Found): Roblox returned no diagnostic details."
+        );
+    }
 }
