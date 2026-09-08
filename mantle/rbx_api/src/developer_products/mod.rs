@@ -99,6 +99,7 @@ impl RobloxApi {
         product_id: AssetId,
         name: String,
         price: u32,
+        is_for_sale: bool,
         description: String,
     ) -> RobloxApiResult<()> {
         let url = format!(
@@ -116,7 +117,7 @@ impl RobloxApi {
                     Form::new()
                         .text("name", name)
                         .text("description", description)
-                        .text("isForSale", "true")
+                        .text("isForSale", is_for_sale.to_string())
                         .text("price", price.to_string()),
                 ),
             )

@@ -11,4 +11,8 @@
 - Preserved HTTP status, method, URL, and response details for asynchronous asset operations instead of reporting JSON parsing failures.
 - Added explicit asset read and write scope diagnostics for Open Cloud asset creation and polling.
 - Reported incomplete asset operations and missing asset responses without panics or ambiguous unwrap failures.
-- Updated the Mantle version to `0.11.20`.
+- Fixed developer product teardown by retaining a valid minimum price while disabling sale status.
+- Migrated experience icon teardown to the current Roblox Open Cloud endpoint and the correct universe identifier.
+- Treated missing and source-language icon deletion responses as idempotent teardown outcomes.
+- Reported the required `legacy-universe:manage` scope for experience icon removal failures.
+- Updated the Mantle version to `0.11.21`.

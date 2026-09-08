@@ -433,6 +433,7 @@ pub struct ExperienceTargetConfig {
     /// 1. Its description is updated to: `Name: <name>\nDescription:\n<description>`
     /// 2. Its name is updated to `zzz_Deprecated(<date-time>)` where `<date-time>` is the current
     ///    date-time in `YYYY-MM-DD hh::mm::ss.ns` format.
+    /// 3. Its sale status is disabled while retaining a valid minimum price.
     pub products: Option<HashMap<String, ProductTargetConifg>>,
 
     /// Passes that can be purchased within your experience for Robux.

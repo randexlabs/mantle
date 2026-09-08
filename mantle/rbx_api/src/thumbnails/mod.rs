@@ -3,10 +3,11 @@ pub mod models;
 use std::path::PathBuf;
 
 use reqwest::multipart::Form;
+use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::{
-    errors::RobloxApiResult,
+    errors::{RobloxApiError, RobloxApiResult},
     helpers::{get_file_part, handle, handle_as_json},
     models::{AssetId, UploadImageResponse},
     RobloxApi,
@@ -59,27 +60,33 @@ impl RobloxApi {
         handle_as_json(res).await
     }
 
-    pub async fn remove_experience_icon(
-        &self,
-        start_place_id: AssetId,
-        icon_asset_id: AssetId,
-    ) -> RobloxApiResult<()> {
-        let res = self
-            .csrf_token_store
-            .send_request(|| async {
-                Ok(self
-                    .client
-                    .post("https://www.roblox.com/places/icons/remove-icon")
-                    .form(&[
-                        ("placeId", &start_place_id.to_string()),
-                        ("placeIconId", &icon_asset_id.to_string()),
-                    ]))
-            })
+    pub async fn remove_experience_icon(&self, experience_id: AssetId) -> RobloxApiResult<()> {
+        let language_code = "en";
+        let url = format!(
+            "https://apis.roblox.com/legacy-game-internationalization/v1/game-icon/games/{}/language-codes/{}",
+            experience_id, language_code
+        );
+        let client = self.open_cloud_client_required(
+            format!("experience {} icon removal", experience_id),
+            "legacy-universe:manage",
+        )?;
+        let result = self
+            .send_open_cloud_request("DELETE", client.delete(url))
             .await;
 
-        handle(res).await?;
-
-        Ok(())
+        match result {
+            Ok(_) => Ok(()),
+            Err(RobloxApiError::Roblox {
+                status_code: StatusCode::NOT_FOUND,
+                ..
+            }) => Ok(()),
+            Err(RobloxApiError::Roblox {
+                status_code: StatusCode::BAD_REQUEST,
+                reason,
+                ..
+            }) if reason.contains("source language") => Ok(()),
+            Err(error) => Err(error.with_required_scope("legacy-universe:manage")),
+        }
     }
 
     pub async fn get_experience_thumbnails(

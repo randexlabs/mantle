@@ -862,6 +862,7 @@ impl ResourceManager<RobloxInputs, RobloxOutputs> for RobloxResourceManager {
                         outputs.asset_id,
                         inputs.name,
                         inputs.price,
+                        true,
                         inputs.description,
                     )
                     .await?;
@@ -1014,11 +1015,11 @@ impl ResourceManager<RobloxInputs, RobloxOutputs> for RobloxResourceManager {
                     .set_experience_active(experience.asset_id, false)
                     .await?;
             }
-            RobloxOutputs::ExperienceIcon(outputs) => {
+            RobloxOutputs::ExperienceIcon(_outputs) => {
                 let experience = single_output!(dependency_outputs, RobloxOutputs::Experience);
 
                 self.roblox_api
-                    .remove_experience_icon(experience.start_place_id, outputs.asset_id)
+                    .remove_experience_icon(experience.asset_id)
                     .await?;
             }
             RobloxOutputs::ExperienceThumbnail(outputs) => {
@@ -1064,7 +1065,8 @@ impl ResourceManager<RobloxInputs, RobloxOutputs> for RobloxResourceManager {
                         experience.asset_id,
                         outputs.asset_id,
                         format!("zzz_DEPRECATED({})", utc.format("%F %T%.f")),
-                        0,
+                        1,
+                        false,
                         "".to_owned(),
                     )
                     .await?;
